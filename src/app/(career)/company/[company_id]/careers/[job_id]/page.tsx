@@ -29,19 +29,118 @@ import { Textarea } from "@/components/ui/textarea";
 import { useDropzone } from "react-dropzone";
 import Link from "next/link";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { retrieveCareerJob } from "./_lib/slice";
+import { retrieveCareerJob } from "./_lib/jobSlice";
+import {
+  updateCvUrl,
+  updateFullName,
+  updateEmail,
+  updatePhoneNumber,
+  updateAddress,
+  updateCity,
+  updateState,
+  updateCountry,
+  updateZipCode,
+  updateStartDate,
+  updateLinkedInUrl,
+  updateExternalWebsiteUrl,
+  updateCoverLetter,
+  setFormErrors,
+  createJobApplication,
+  JobApplicationRequest,
+  resetApplicationForm,
+} from "./_lib/formSlice";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 import { useParams } from "next/navigation";
 import { Oval } from "react-loader-spinner";
+import { z } from "zod";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+
+const formSchema = z.object({
+  full_name: z
+    .string()
+    .trim()
+    .min(2, "Full Name must be at least 2 characters")
+    .max(100, "Full Name must be at most 100 characters"),
+
+  email: z.string().trim().email("Invalid email address"),
+
+  phone_number: z
+    .string()
+    .trim()
+    .regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format"),
+
+  address: z
+    .string()
+    .trim()
+    .min(5, "Address must be at least 5 characters")
+    .max(200, "Address must be at most 200 characters"),
+
+  city: z
+    .string()
+    .trim()
+    .min(2, "City must be at least 2 characters")
+    .max(100, "City must be at most 100 characters"),
+
+  state: z
+    .string()
+    .trim()
+    .min(2, "State must be at least 2 characters")
+    .max(100, "State must be at most 100 characters"),
+
+  country: z
+    .string()
+    .trim()
+    .min(2, "Country must be at least 2 characters")
+    .max(100, "Country must be at most 100 characters"),
+
+  zip_code: z
+    .string()
+    .trim()
+    .regex(/^\d{4,10}$/, "Invalid Zip Code (Must be 4-10 digits)"),
+
+  linkedin_url: z
+    .string()
+    .trim()
+    .refine(
+      (val) => val.includes("linkedin.com/in/"),
+      "Must be a LinkedIn profile URL"
+    )
+    .optional(),
+
+  external_website_url: z.string().url("Invalid URL").optional(),
+
+  cover_letter: z
+    .string()
+    .trim()
+    .min(10, "Cover Letter must be at least 10 characters")
+    .max(2000, "Cover Letter must be at most 2000 characters")
+    .optional(),
+});
 
 const ApplyPage = ({ params }: { params: { job_id: string } }) => {
+  // Local States
   const [tab, setTab] = useState<string>("job details");
+
+  // Redux States
   const dispatch = useAppDispatch();
+  const applicationFormState = useAppSelector(
+    (state) => state.applicationFormReducer
+  );
+  const applicationFormData = useAppSelector(
+    (state) => state.applicationFormReducer.form_fields
+  );
+  const formErrors = useAppSelector(
+    (state) => state.applicationFormReducer.form_errors
+  );
   const job = useAppSelector((state) => state.careerJobReducer.job || {});
   const loading = useAppSelector((state) => state.careerJobReducer.loading);
-  const company_id = useParams().company_id;
 
+  // Parameters
+  const company_id = useParams().company_id.toString();
+
+  // Effects
   useEffect(() => {
     if (job?.id !== Number(params.job_id)) {
       dispatch(
@@ -53,8 +152,53 @@ const ApplyPage = ({ params }: { params: { job_id: string } }) => {
     }
   }, [dispatch]);
 
+  useEffect(() => {
+    if (applicationFormState.loading === "succeeded") {
+      onTabChange("job details");
+      dispatch(resetApplicationForm());
+      toast.success("Application submitted successfully");
+    }
+
+    if (applicationFormState.loading === "failed") {
+      toast.error("There was an error: " + applicationFormState.error);
+    }
+  }, [applicationFormState.loading]);
+
+  // Handle Functions
   const onTabChange = (value: string) => {
     setTab(value);
+  };
+
+  const validateForm = () => {
+    const result = formSchema.safeParse(applicationFormData);
+
+    if (!result.success) {
+      // Extract Zod errors and map them to Redux error state
+      const newErrors: Record<string, string> = {};
+      result.error.errors.forEach((err) => {
+        if (err.path[0]) {
+          newErrors[err.path[0]] = err.message;
+        }
+      });
+
+      dispatch(setFormErrors(newErrors));
+      return false;
+    }
+
+    dispatch(setFormErrors({})); // Clear errors if validation passes
+    return true;
+  };
+
+  const handleSubmit = () => {
+    if (!validateForm()) return;
+
+    const reqBody: JobApplicationRequest = {
+      ...applicationFormData,
+      job_id: params.job_id,
+      company_id: company_id,
+    };
+
+    dispatch(createJobApplication(reqBody));
   };
 
   const handleApplyButtonClick = (value: string) => {
@@ -64,6 +208,7 @@ const ApplyPage = ({ params }: { params: { job_id: string } }) => {
     }
   };
 
+  // Dropzone
   const onDrop = useCallback((acceptedFiles: any) => {
     acceptedFiles.forEach((file: any) => {
       const reader = new FileReader();
@@ -106,6 +251,7 @@ const ApplyPage = ({ params }: { params: { job_id: string } }) => {
     );
   });
 
+  // Render
   if (loading === "failed") {
     return (
       <div className="w-full h-screen flex flex-col justify-center items-center gap-4">
@@ -200,10 +346,6 @@ const ApplyPage = ({ params }: { params: { job_id: string } }) => {
                   >
                     Apply
                   </Button>
-                  {/* <span className="font-semibold">Or</span>
-                  <Button className="w-full" variant={"secondary"}>
-                    Refer a Friend
-                  </Button> */}
                 </div>
               </CardFooter>
             </Card>
@@ -256,64 +398,188 @@ const ApplyPage = ({ params }: { params: { job_id: string } }) => {
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
                 <div className="space-y-2">
-                  <Label>Full Name</Label>
-                  <Input placeholder="Full Name" />
+                  <Label>Full Name *</Label>
+                  <Input
+                    placeholder="Full Name"
+                    onChange={(e) => {
+                      if (formErrors?.full_name) dispatch(setFormErrors({}));
+                      dispatch(updateFullName(e.target.value));
+                    }}
+                    className={cn(
+                      formErrors?.full_name
+                        ? "border-destructive dark:border-destructive"
+                        : ""
+                    )}
+                  />
+                  {formErrors?.full_name && (
+                    <p className="text-destructive">{formErrors.full_name}</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Email Address</Label>
-                  <Input placeholder="Email Address" />
+                  <Label>Email Address *</Label>
+                  <Input
+                    placeholder="Email Address"
+                    onChange={(e) => {
+                      if (formErrors?.email) dispatch(setFormErrors({}));
+                      dispatch(updateEmail(e.target.value));
+                    }}
+                    className={cn(
+                      formErrors?.email
+                        ? "border-destructive dark:border-destructive"
+                        : ""
+                    )}
+                  />
+                  {formErrors?.email && (
+                    <p className="text-destructive">{formErrors.email}</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Phone Number</Label>
-                  <Input placeholder="Phone Number" />
+                  <Label>Phone Number *</Label>
+                  <Input
+                    onChange={(e) => {
+                      if (formErrors?.phone_number) dispatch(setFormErrors({}));
+                      dispatch(updatePhoneNumber(e.target.value));
+                    }}
+                    placeholder="Phone Number"
+                    className={cn(
+                      formErrors?.phone_number
+                        ? "border-destructive dark:border-destructive"
+                        : ""
+                    )}
+                  />
+                  {formErrors?.phone_number && (
+                    <p className="text-destructive">
+                      {formErrors.phone_number}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Address</Label>
-                  <Input placeholder="Address" />
+                  <Label>Country *</Label>
+                  <Input
+                    onChange={(e) => {
+                      if (formErrors?.country) dispatch(setFormErrors({}));
+                      dispatch(updateCountry(e.target.value));
+                    }}
+                    placeholder="Country"
+                    className={cn(
+                      formErrors?.country
+                        ? "border-destructive dark:border-destructive"
+                        : ""
+                    )}
+                  />
+                  {formErrors?.country && (
+                    <p className="text-destructive">{formErrors.country}</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label>City</Label>
-                  <Input placeholder="City" />
+                  <Label>Address *</Label>
+                  <Input
+                    onChange={(e) => {
+                      if (formErrors?.address) dispatch(setFormErrors({}));
+                      dispatch(updateAddress(e.target.value));
+                    }}
+                    placeholder="Address"
+                    className={cn(
+                      formErrors?.address
+                        ? "border-destructive dark:border-destructive"
+                        : ""
+                    )}
+                  />
+                  {formErrors?.address && (
+                    <p className="text-destructive">{formErrors.address}</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Province / State</Label>
-                  <Input placeholder="Province / State" />
+                  <Label>City *</Label>
+                  <Input
+                    onChange={(e) => {
+                      if (formErrors?.city) dispatch(setFormErrors({}));
+                      dispatch(updateCity(e.target.value));
+                    }}
+                    placeholder="City"
+                    className={cn(
+                      formErrors?.city
+                        ? "border-destructive dark:border-destructive"
+                        : ""
+                    )}
+                  />
+                  {formErrors?.city && (
+                    <p className="text-destructive">{formErrors.city}</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Postal Code</Label>
-                  <Input placeholder="Postal Code" />
+                  <Label>Province / State *</Label>
+                  <Input
+                    onChange={(e) => {
+                      if (formErrors?.state) dispatch(setFormErrors({}));
+                      dispatch(updateState(e.target.value));
+                    }}
+                    placeholder="Province / State"
+                    className={cn(
+                      formErrors?.state
+                        ? "border-destructive dark:border-destructive"
+                        : ""
+                    )}
+                  />
+                  {formErrors?.state && (
+                    <p className="text-destructive">{formErrors.state}</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Start Date</Label>
+                  <Label>Postal Code *</Label>
+                  <Input
+                    onChange={(e) => {
+                      if (formErrors?.zip_code) dispatch(setFormErrors({}));
+                      dispatch(updateZipCode(e.target.value));
+                    }}
+                    placeholder="Postal Code"
+                    className={cn(
+                      formErrors?.zip_code
+                        ? "border-destructive dark:border-destructive"
+                        : ""
+                    )}
+                  />
+                  {formErrors?.zip_code && (
+                    <p className="text-destructive">{formErrors.zip_code}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Start Date *</Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
                         variant={"outline"}
                         className="w-full pl-3 text-left font-normal"
                       >
-                        {/* {field.value ? (
-                          format(field.value, "PPP")
+                        {applicationFormData?.start_date ? (
+                          applicationFormData?.start_date
                         ) : (
-                          <span>Pick a date</span>
-                          )} */}
-                        <span className="text-muted-foreground">
-                          Pick a date
-                        </span>
+                          <span className="text-muted-foreground">
+                            Pick a date
+                          </span>
+                        )}
                         <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
                       <Calendar
                         mode="single"
-                        // selected={field.value}
-                        // onSelect={field.onChange}
+                        selected={
+                          applicationFormData?.start_date
+                            ? new Date(applicationFormData?.start_date)
+                            : undefined
+                        }
+                        onSelect={(date) => {
+                          dispatch(updateStartDate(date?.toDateString()));
+                        }}
                         disabled={(date: any) =>
                           date < new Date() || date < new Date("1900-01-01")
                         }
@@ -325,22 +591,71 @@ const ApplyPage = ({ params }: { params: { job_id: string } }) => {
 
                 <div className="space-y-2">
                   <Label>LinkedIn URL</Label>
-                  <Input placeholder="LinkedIn URL" />
+                  <Input
+                    placeholder="LinkedIn URL"
+                    onChange={(e) => {
+                      if (formErrors?.email) dispatch(setFormErrors({}));
+                      dispatch(updateLinkedInUrl(e.target.value));
+                    }}
+                    className={cn(
+                      formErrors?.linkedin_url
+                        ? "border-destructive dark:border-destructive"
+                        : ""
+                    )}
+                  />
+                  {formErrors?.linkedin_url && (
+                    <p className="text-destructive">
+                      {formErrors.linkedin_url}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
                   <Label>Website, Blog, or Portfolio</Label>
-                  <Input placeholder="Website, Blog, or Portfolio" />
+                  <Input
+                    placeholder="Website, Blog, or Portfolio"
+                    onChange={(e) => {
+                      if (formErrors?.external_website_url)
+                        dispatch(setFormErrors({}));
+                      dispatch(updateExternalWebsiteUrl(e.target.value));
+                    }}
+                    className={cn(
+                      formErrors?.external_website_url
+                        ? "border-destructive dark:border-destructive"
+                        : ""
+                    )}
+                  />
+                  {formErrors?.external_website_url && (
+                    <p className="text-destructive">
+                      {formErrors.external_website_url}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
                   <Label>Cover Letter</Label>
                   <Textarea
-                    className="resize-none md:resize-y"
+                    className={cn(
+                      "resize-none md:resize-y",
+                      formErrors?.cover_letter
+                        ? "border-destructive dark:border-destructive"
+                        : ""
+                    )}
+                    onChange={(e) => {
+                      if (formErrors?.cover_letter) dispatch(setFormErrors({}));
+                      dispatch(updateCoverLetter(e.target.value));
+                    }}
                     placeholder="You can write your cover letter here ..."
                   />
+                  {formErrors?.cover_letter && (
+                    <p className="text-destructive">
+                      {formErrors.cover_letter}
+                    </p>
+                  )}
                 </div>
-                <Button type="submit">Submit</Button>
+                <Button type="submit" onClick={handleSubmit}>
+                  Submit
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>

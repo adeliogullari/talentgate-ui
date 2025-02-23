@@ -2,7 +2,8 @@ import { configureStore } from "@reduxjs/toolkit";
 import loginReducer from "@/app/login/_lib/slice";
 import registerReducer from "@/app/register/_lib/slice";
 import careerJobsReducer from "@/app/(career)/company/[company_id]/careers/_lib/slice";
-import careerJobReducer from "@/app/(career)/company/[company_id]/careers/[job_id]/_lib/slice";
+import careerJobReducer from "@/app/(career)/company/[company_id]/careers/[job_id]/_lib/jobSlice";
+import applicationFormReducer from "@/app/(career)/company/[company_id]/careers/[job_id]/_lib/formSlice";
 
 export const makeStore = () => {
   return configureStore({
@@ -11,6 +12,7 @@ export const makeStore = () => {
       registerReducer: registerReducer,
       careerJobsReducer: careerJobsReducer,
       careerJobReducer: careerJobReducer,
+      applicationFormReducer:  applicationFormReducer,
     },
   });
 };

@@ -78,6 +78,7 @@ export const careerJobSlice = createSlice({
   name: "careerJobSlice",
   initialState: CareerJobInitialState,
   reducers: {},
+
   extraReducers: (builder) => {
     builder.addCase(retrieveCareerJob.pending, (state) => {
       state.loading = "pending";
