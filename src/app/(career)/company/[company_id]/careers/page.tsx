@@ -270,10 +270,10 @@ const CareerPage = () => {
 
     const params = new URLSearchParams(searchParams.toString());
 
-    if (searchFieldValue !== "") {
+    params.delete("title");
+    
+    if (!params.has("title") && searchFieldValue !== "") {
       params.append("title", searchFieldValue);
-    } else {
-      params.delete("title");
     }
 
     router.push(pathname + "?" + params.toString(), { scroll: false });
